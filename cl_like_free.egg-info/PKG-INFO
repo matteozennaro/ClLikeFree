@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: cl-like-free
+Version: 0.1.0
+Summary: A cosmological angular power spectrum likelihood package
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: pyccl
+Requires-Dist: sacc
+Requires-Dist: baccoemu
