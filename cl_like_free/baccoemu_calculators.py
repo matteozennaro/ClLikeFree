@@ -423,9 +423,13 @@ class mpk_calculator:
             return self.precomputed_Sk
         else:
             in_bounds_baryon = self._baryon_Sk_check_cosmo_bounds(bacco_cosmo, baryon_params)
+            # it can happen that when calling this function from outside (i.e. from theory.py) the
+            # bacco parameters do not include expfactors.
+            if 'expfactor' not in bacco_cosmo:
+                bacco_cosmo['expfactor'] = self.ccl_as
             if np.all(list(in_bounds_baryon.values())):
                 # All baryon parameters are within bounds, use the original parameters
-                k, Sk = self.mpk.get_baryonic_boost(expfactor=self.ccl_as, **bacco_cosmo, **baryon_params)
+                k, Sk = self.mpk.get_baryonic_boost(**bacco_cosmo, **baryon_params)
             else:
                 cosmopars_out = bacco_cosmo.copy()
                 b_frac_orig = bacco_cosmo['omega_baryon']/bacco_cosmo['omega_cold']
@@ -438,9 +442,9 @@ class mpk_calculator:
                             if bacco_cosmo[par] is None:
                                 del cosmopars_out[par]
                             else:
-                                if (bacco_cosmo[par] < emulator['bounds'][i][0]):
+                                if np.any(bacco_cosmo[par] < emulator['bounds'][i][0]):
                                     cosmopars_out[par] = emulator['bounds'][i][0]
-                                elif (bacco_cosmo[par] > emulator['bounds'][i][1]):
+                                elif np.any(bacco_cosmo[par] > emulator['bounds'][i][1]):
                                     cosmopars_out[par] = emulator['bounds'][i][1]
 
                 b_frac = cosmopars_out['omega_baryon']/cosmopars_out['omega_cold']
@@ -453,14 +457,14 @@ class mpk_calculator:
                                             bounds=(Oc_bounds, Ob_bounds))
                     cosmopars_out['omega_cold'] = res.x[0]
                     cosmopars_out['omega_baryon'] = res.x[1]
-                k, Sk = self.mpk.get_baryonic_boost(expfactor=self.ccl_as, **cosmopars_out, **baryon_params)
+                k, Sk = self.mpk.get_baryonic_boost(**cosmopars_out, **baryon_params)
 
             if np.all(Sk > 0):
-                Sk2d = ccl.Pk2D(a_arr=self.ccl_as, lk_arr=np.log(k), pk_arr=np.log(Sk), is_logp=True)
+                Sk2d = ccl.Pk2D(a_arr=bacco_cosmo['expfactor'], lk_arr=np.log(k), pk_arr=np.log(Sk), is_logp=True)
             else:
-                Sk2d = ccl.Pk2D(a_arr=self.ccl_as, lk_arr=np.log(k), pk_arr=Sk, is_logp=False)
+                Sk2d = ccl.Pk2D(a_arr=bacco_cosmo['expfactor'], lk_arr=np.log(k), pk_arr=Sk, is_logp=False)
 
-            out = {'k': k, 'Sk': Sk, 'a_s': self.ccl_as, 'Sk2d': Sk2d}
+            out = {'k': k, 'Sk': Sk, 'a_s': bacco_cosmo['expfactor'], 'Sk2d': Sk2d}
             self.precomputed_Sk = out
             return out
 
@@ -469,11 +473,18 @@ class mpk_calculator:
         if np.all(list(in_bounds.values())):
             # All parameters are within bounds, use the original parameters
             # k and pk3d in h/Mpc and (Mpc/h)^3
-            k, pk3d = self.mpk.get_nonlinear_pk(**bacco_cosmo)
+            # baccoemu nonlinear starts at k=0.01 h/Mpc, which is not enough to capture the
+            # turnaround of the power spectrum by simply extrapolating; but, it can extrapolate to low k
+            # (it sets the boost to 1 and extends the large-scale end with linear theory), so we
+            # can add points at low k.
+            k = self.mpk.emulator['nonlinear']['k']
+            k = np.concatenate([np.logspace(-4, np.log10(k.min()), 30)[:-1], k])
+            k, pk3d = self.mpk.get_nonlinear_pk(k=k, **bacco_cosmo)
         else:
             # switch to halofit
             # k and pk3d in h/Mpc and (Mpc/h)^3
             k = self.mpk.emulator['nonlinear']['k']
+            k = np.concatenate([np.logspace(-4, np.log10(k.min()), 30)[:-1], k])
             h = ccl_cosmo['h']
             k_ccl_here = k * h
             pk3d = np.array([ccl.nonlin_matter_power(ccl_cosmo, k_ccl_here, a)
