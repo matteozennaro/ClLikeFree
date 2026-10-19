@@ -4,13 +4,13 @@ from cl_like_free.baccoemu_calculators import heft_calculator, mpk_calculator
 from scipy.interpolate import interp1d
 
 class theory_calculator:
-    def __init__(self, cl_meta, bin_properties, tracer_qs, sample_type='convolve', bias_input_name='bias', use_baryons=None, ia_parameters=None, magnification_bias_parameters=None, nz_uncertainty_parameters=None, shape_model_parameters=None):
+    def __init__(self, cl_meta, bin_properties, tracer_qs, sample_type=None, bias_input_name='bias', use_baryons=None, ia_parameters=None, magnification_bias_parameters=None, nz_uncertainty_parameters=None, shape_model_parameters=None, debug=False):
         self.heft_calculator = heft_calculator(ccl_ks=np.logspace(-4, 1, 200), ccl_as=np.linspace(0.4, 1.0, 50))
-        self.mpk_calculator = mpk_calculator(ccl_ks=np.logspace(-4, 1, 200), ccl_as=np.linspace(0.4, 1.0, 50))
+        self.mpk_calculator = mpk_calculator(ccl_ks=np.logspace(-4, np.log10(50), 1000), ccl_as=np.linspace(0.4, 1.0, 50))
         self.cl_meta = cl_meta
         self.bin_properties = bin_properties
         self.tracer_qs = tracer_qs
-
+        self.debug = debug
         # Set default CCL parameters
         self.ccl_defaults = {
             'transfer_function': 'boltzmann_camb',
@@ -22,6 +22,12 @@ class theory_calculator:
         self.bias_param_names = ['b1', 'b2', 'bs', 'blap']
         self.bias_input_name = bias_input_name
         self.bnames = ['b1', 'b2', 'bs', 'blap']
+
+        if self.debug:
+            print("Initializing theory calculator in debug mode")
+
+        assert sample_type is not None, "sample_type must be provided"
+        assert sample_type in ['center', 'best', 'convolve'], f"Unknown sample_type {sample_type}"
 
         self.sample_type = sample_type
         self.sample_cen = self.sample_type in ['center', 'best']
@@ -117,7 +123,7 @@ class theory_calculator:
             baryon_params = {k: bias_params[k] for k in self.baryon_param_names if k in bias_params}
             return baryon_params
         else:
-            return {}
+            return None
 
     def _get_ell_sampling(self, nl_per_decade=30):
         # Selects ell sampling.
@@ -314,9 +320,11 @@ class theory_calculator:
             else:
                 raise ValueError(f"Unknown combination of tracers: {q1}, {q2}")
 
-
-        self.heft_calculator.clear_cache()
-        self.mpk_calculator.clear_cache()
+        if self.debug:
+            print("WARNIG: in debug mode, NOT clearing cache for heft_calculator and mpk_calculator")
+        else:
+            self.heft_calculator.clear_cache()
+            self.mpk_calculator.clear_cache()
 
         return np.concatenate(theory_vector)
 
@@ -408,7 +416,8 @@ class theory_calculator:
         cl_gg = cl + S1 * cl_g1mag + S2 * cl_g2mag + S1 * S2 * cl_magmag
 
 
-        cl_gg = self._eval_interp_cl(cl_gg, clm['l_bpw'], clm['w_bpw'])
+
+        cl_gg = cl_gg if self.sample_cen else self._eval_interp_cl(cl_gg, clm['l_bpw'], clm['w_bpw'])
 
         return cl_gg
 
@@ -463,7 +472,7 @@ class theory_calculator:
                             p_of_k_a=pk2d) * clm['pixbeam']
         cl *= A_IA_1 * A_IA_2
 
-        cl_ss = self._eval_interp_cl(cl, clm['l_bpw'], clm['w_bpw'])
+        cl_ss = cl if self.sample_cen else self._eval_interp_cl(cl, clm['l_bpw'], clm['w_bpw'])
 
         return cl_ss
 
@@ -555,7 +564,7 @@ class theory_calculator:
         cl_gs = cl + S1 * cl_smag
 
 
-        cl_gs = self._eval_interp_cl(cl_gs, clm['l_bpw'], clm['w_bpw'])
+        cl_gs = cl_gs if self.sample_cen else self._eval_interp_cl(cl_gs, clm['l_bpw'], clm['w_bpw'])
 
         return cl_gs
 
@@ -633,7 +642,7 @@ class theory_calculator:
                             p_of_k_a=pk2d_mm) * clm['pixbeam']
         cl_gk = cl + S1 * cl_kmag
 
-        cl_gk = self._eval_interp_cl(cl_gk, clm['l_bpw'], clm['w_bpw'])
+        cl_gk = cl_gk if self.sample_cen else self._eval_interp_cl(cl_gk, clm['l_bpw'], clm['w_bpw'])
 
         return cl_gk
 
@@ -687,6 +696,6 @@ class theory_calculator:
                             limber_integration_method=self.limber_integration_method,
                             p_of_k_a=pk2d) * clm['pixbeam']
         cl *= A_IA_1
-        cl_sk = self._eval_interp_cl(cl, clm['l_bpw'], clm['w_bpw'])
+        cl_sk = cl if self.sample_cen else self._eval_interp_cl(cl, clm['l_bpw'], clm['w_bpw'])
 
         return cl_sk
