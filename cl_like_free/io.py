@@ -96,7 +96,7 @@ def read_data(fits_file, bins, twopoints, defaults):
                                             return_ind=True)
         # Check it is not empty
         if c_ell.size == 0:
-            continue
+            raise ValueError(f'No data found for {tn1} x {tn2}')
 
         # Scale cuts
         if 'lmin' in cl:
