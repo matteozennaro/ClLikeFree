@@ -501,11 +501,6 @@ class mpk_calculator:
             pk3d = np.array([ccl.nonlin_matter_power(ccl_cosmo, k_ccl_here, a)
                              for a in bacco_cosmo['expfactor']])*h**3
 
-        if baryon_params is not None:
-            baccoemu_Sk = self.get_baccoemu_Sk(bacco_cosmo, baryon_params)
-            Sk = self.k_extrapolator_for_Sk(k, baccoemu_Sk['k'], baccoemu_Sk['Sk'])
-            pk3d *= Sk
-
         return k, pk3d
 
     def compute_matter_pk(self, cosmo_params, ccl_cosmo, baryon_params):
@@ -523,6 +518,11 @@ class mpk_calculator:
 
             # extrapolate to match required k-range
             pk3d = self.k_extrapolator(k, pk3d)
+
+            if baryon_params is not None:
+                baccoemu_Sk = self.get_baccoemu_Sk(bacco_cosmo, baryon_params)
+                Sk = self.k_extrapolator_for_Sk(self.ccl_ks, baccoemu_Sk['k'] * cosmo_params['h'], baccoemu_Sk['Sk'])
+                pk3d *= Sk
 
             out = {'k': self.ccl_ks, 'pk': pk3d, 'a_s': self.ccl_as}
             self.precomputed_pk = out
