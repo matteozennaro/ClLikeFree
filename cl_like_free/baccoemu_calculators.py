@@ -459,10 +459,21 @@ class mpk_calculator:
                     cosmopars_out['omega_baryon'] = res.x[1]
                 k, Sk = self.mpk.get_baryonic_boost(**cosmopars_out, **baryon_params)
 
+            # fill large scales with ones
+            newk = np.concatenate([np.logspace(-4, np.log10(k.min()), 30)[:-1], k])
+            newSk = np.ones((len(bacco_cosmo['expfactor']), len(newk)))
+            newSk[:, -len(k):] = Sk
+            k = newk
+            Sk = newSk
+
+            # Sk_ccl = self.k_extrapolator_for_Sk(self.ccl_ks, k * bacco_cosmo['hubble'], Sk)
+            Sk_ccl = Sk
+            ccl_ks = k * bacco_cosmo['hubble']
+
             if np.all(Sk > 0):
-                Sk2d = ccl.Pk2D(a_arr=bacco_cosmo['expfactor'], lk_arr=np.log(k), pk_arr=np.log(Sk), is_logp=True)
+                Sk2d = ccl.Pk2D(a_arr=bacco_cosmo['expfactor'], lk_arr=np.log(ccl_ks), pk_arr=np.log(Sk_ccl), is_logp=True)
             else:
-                Sk2d = ccl.Pk2D(a_arr=bacco_cosmo['expfactor'], lk_arr=np.log(k), pk_arr=Sk, is_logp=False)
+                Sk2d = ccl.Pk2D(a_arr=bacco_cosmo['expfactor'], lk_arr=np.log(ccl_ks), pk_arr=Sk_ccl, is_logp=False)
 
             out = {'k': k, 'Sk': Sk, 'a_s': bacco_cosmo['expfactor'], 'Sk2d': Sk2d}
             self.precomputed_Sk = out
@@ -479,7 +490,7 @@ class mpk_calculator:
             # can add points at low k.
             k = self.mpk.emulator['nonlinear']['k']
             k = np.concatenate([np.logspace(-4, np.log10(k.min()), 30)[:-1], k])
-            k, pk3d = self.mpk.get_nonlinear_pk(cold=False,k=k, **bacco_cosmo)
+            k, pk3d = self.mpk.get_nonlinear_pk(cold=False, k=k, **bacco_cosmo)
         else:
             # switch to halofit
             # k and pk3d in h/Mpc and (Mpc/h)^3
