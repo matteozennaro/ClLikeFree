@@ -530,11 +530,9 @@ class theory_calculator:
 
         # if there are IA nuisance parameters, apply them here
         ia_bias_2 = self._ia_bias(name2, bias_params)
-        A_IA_2 = self._ia_constant_bias(name2, bias_params)
 
         if self.shape_model == 'ShapeMultiplicative':
             m2 = bias_params[self.shape_model_parameters['input_params_prefix'] + '_' + name2 + '_m']
-            A_IA_2 *= (1 + m2)
 
         # Now the projections
         dndz = self._get_nz(name2, bias_params)
@@ -552,12 +550,10 @@ class theory_calculator:
         cl = ccl.angular_cl(ccl_cosmo, tr1, tr2, ls,
                             limber_integration_method=self.limber_integration_method,
                             p_of_k_a=pk2d_gm_1) * clm['pixbeam']
-        cl *= A_IA_2
         cl_smag = ccl.angular_cl(ccl_cosmo, tr2, trm, ls,
                             limber_integration_method=self.limber_integration_method,
                             p_of_k_a=pk2d_mm) * clm['pixbeam']
-        cl_smag *= A_IA_2
-        cl_gs = cl + S1 * cl_smag
+        cl_gs = (1 + m2) * cl + S1 * cl_smag
 
 
         cl_gs = cl_gs if self.sample_cen else self._eval_interp_cl(cl_gs, clm['l_bpw'], clm['w_bpw'])
@@ -666,11 +662,10 @@ class theory_calculator:
         # First, the galaxy shear part
         # if there are IA nuisance parameters, apply them here
         ia_bias_1 = self._ia_bias(name1, bias_params)
-        A_IA_1 = self._ia_constant_bias(name1, bias_params)
+
 
         if self.shape_model == 'ShapeMultiplicative':
             m1 = bias_params[self.shape_model_parameters['input_params_prefix'] + '_' + name1 + '_m']
-            A_IA_1 *= (1 + m1)
 
         # Now the projections
         dndz = self._get_nz(name1, bias_params)
@@ -691,7 +686,7 @@ class theory_calculator:
         cl = ccl.angular_cl(ccl_cosmo, tr1, tr2, ls,
                             limber_integration_method=self.limber_integration_method,
                             p_of_k_a=pk2d) * clm['pixbeam']
-        cl *= A_IA_1
+        cl *= (1 + m1)
         cl_sk = cl if self.sample_cen else self._eval_interp_cl(cl, clm['l_bpw'], clm['w_bpw'])
 
         return cl_sk
