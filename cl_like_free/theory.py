@@ -307,11 +307,11 @@ class theory_calculator:
                 theory_vector.append(cl_ss)
             elif ((q1 == 'galaxy_density') and (q2 == 'galaxy_shear')) or ((q1 == 'galaxy_shear') and (q2 == 'galaxy_density')):
                 # Compute galaxy-galaxy lensing
-                cl_gs = self.compute_galaxy_shear(clm, cosmo_params, bias_params, ccl_cosmo)
+                cl_gs = self.compute_clustering_shear(clm, cosmo_params, bias_params, ccl_cosmo)
                 theory_vector.append(cl_gs)
             elif ((q1 == 'galaxy_density') and (q2 == 'cmb_convergence')) or ((q1 == 'cmb_convergence') and (q2 == 'galaxy_density')):
                 # Compute galaxy-cmb lensing
-                cl_gl = self.compute_galaxy_cmb_convergence(clm, cosmo_params, bias_params, ccl_cosmo)
+                cl_gl = self.compute_clustering_cmb_convergence(clm, cosmo_params, bias_params, ccl_cosmo)
                 theory_vector.append(cl_gl)
             elif ((q1 == 'galaxy shear') and (q2 == 'cmb_convergence')) or ((q1 == 'cmb_convergence') and (q2 == 'galaxy_shear')):
                 # Compute shear-cmb lensing
@@ -472,7 +472,7 @@ class theory_calculator:
 
         return cl_ss
 
-    def compute_galaxy_shear(self, clm, cosmo_params, bias_params, ccl_cosmo):
+    def compute_clustering_shear(self, clm, cosmo_params, bias_params, ccl_cosmo):
         name1 = clm['bin_1']
         name2 = clm['bin_2']
 
@@ -560,7 +560,7 @@ class theory_calculator:
 
         return cl_gs
 
-    def compute_galaxy_cmb_convergence(self, clm, cosmo_params, bias_params, ccl_cosmo):
+    def compute_clustering_cmb_convergence(self, clm, cosmo_params, bias_params, ccl_cosmo):
         name1 = clm['bin_1']
         name2 = clm['bin_2']
 
