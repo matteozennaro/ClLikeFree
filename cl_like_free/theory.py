@@ -248,15 +248,15 @@ class theory_calculator:
 
         z = self.bin_properties[name]['z_fid']
         if self.ia_model == 'IAPerBin':
-            A_IA = np.ones_like(z)
+            A_IA = np.ones_like(z) * pars[self.ia_input_params_prefix + '_' + name + '_A_IA']
         elif self.ia_model == 'IADESY1':
-            A0 = 1
+            A0 = pars[self.ia_input_params_prefix + '_A_IA']
             eta = pars[self.ia_input_params_prefix + '_eta_IA']
             A_IA = A0 * ((1+z)/1.62)**eta
         elif self.ia_model == 'IADESY1_PerSurvey':
             # This assumes that name = survey__zbin
             survey = name.split('__')[0]
-            A0 = 1
+            A0 = pars[self.ia_input_params_prefix + '_' + survey + '_A_IA']
             eta = pars[self.ia_input_params_prefix + '_' + survey + '_eta_IA']
             A_IA = A0 * ((1+z)/1.62)**eta
         else:
@@ -440,14 +440,10 @@ class theory_calculator:
         # if there are IA nuisance parameters, apply them here
         ia_bias_1 = self._ia_bias(name1, bias_params)
         ia_bias_2 = self._ia_bias(name2, bias_params)
-        A_IA_1 = self._ia_constant_bias(name1, bias_params)
-        A_IA_2 = self._ia_constant_bias(name2, bias_params)
 
         if self.shape_model == 'ShapeMultiplicative':
             m1 = bias_params[self.shape_model_parameters['input_params_prefix'] + '_' + name1 + '_m']
             m2 = bias_params[self.shape_model_parameters['input_params_prefix'] + '_' + name2 + '_m']
-            A_IA_1 *= (1 + m1)
-            A_IA_2 *= (1 + m2)
 
         # Now the projections
         dndz = self._get_nz(name1, bias_params)
@@ -470,7 +466,7 @@ class theory_calculator:
         cl = ccl.angular_cl(ccl_cosmo, tr1, tr2, ls,
                             limber_integration_method=self.limber_integration_method,
                             p_of_k_a=pk2d) * clm['pixbeam']
-        cl *= A_IA_1 * A_IA_2
+        cl *= (1 + m1) * (1 + m2)
 
         cl_ss = cl if self.sample_cen else self._eval_interp_cl(cl, clm['l_bpw'], clm['w_bpw'])
 
