@@ -313,7 +313,7 @@ class theory_calculator:
                 # Compute galaxy-cmb lensing
                 cl_gl = self.compute_clustering_cmb_convergence(clm, cosmo_params, bias_params, ccl_cosmo)
                 theory_vector.append(cl_gl)
-            elif ((q1 == 'galaxy shear') and (q2 == 'cmb_convergence')) or ((q1 == 'cmb_convergence') and (q2 == 'galaxy_shear')):
+            elif ((q1 == 'galaxy_shear') and (q2 == 'cmb_convergence')) or ((q1 == 'cmb_convergence') and (q2 == 'galaxy_shear')):
                 # Compute shear-cmb lensing
                 cl_sl = self.compute_shear_cmb_convergence(clm, cosmo_params, bias_params, ccl_cosmo)
                 theory_vector.append(cl_sl)
