@@ -33,12 +33,10 @@ class heft_calculator:
                                  False, True, False, False, True, False, True])
         self.lin_der = ~ self.log_der
 
-        self.precomputed_clustering = {}
-        self.precomputed_clustering_cross_matter = {}
+        self.precomputed_pnn = {}
 
     def clear_cache(self):
-        self.precomputed_clustering = {}
-        self.precomputed_clustering_cross_matter = {}
+        self.precomputed_pnn = {}
 
     def extract_bacco_cosmo(self, params):
         bacco_cosmo = {
@@ -147,145 +145,145 @@ class heft_calculator:
         return ccl_params
 
     def get_baccoemu_pnn(self, bacco_cosmo, ccl_cosmo):
-        in_bounds, params_within_bounds = self._get_out_of_bounds(bacco_cosmo)
-        if np.all(list(in_bounds.values())):
-            # All parameters are within bounds, use the original parameters
-            # k and pnn in h/Mpc and (Mpc/h)^3
-            k, pnn = self.lbias.get_nonlinear_pnn(**bacco_cosmo)
+        if self.precomputed_pnn:
+            return self.precomputed_pnn
         else:
-            # get halofit reference
-            ccl_params_within_bounds = self._bacco_to_ccl_params(params_within_bounds)
-            ccl_cosmo_within_bounds = ccl.Cosmology(**ccl_params_within_bounds)
-            h = ccl_cosmo['h']
-            k_ccl_here = self.lbias.emulator['nonlinear']['k'] * h
-            pk_mm = np.array([ccl.nonlin_matter_power(ccl_cosmo, k_ccl_here, a)
-                              for a in bacco_cosmo['expfactor']])*h**3
-            pk_mm_0 = np.array([ccl.nonlin_matter_power(ccl_cosmo_within_bounds, k_ccl_here, a)
-                              for a in bacco_cosmo['expfactor']])*h**3
-            k, pks_0 = self.lbias.get_nonlinear_pnn(expfactor=bacco_cosmo['expfactor'], **params_within_bounds)
+            in_bounds, params_within_bounds = self._get_out_of_bounds(bacco_cosmo)
+            if np.all(list(in_bounds.values())):
+                # All parameters are within bounds, use the original parameters
+                # k and pnn in h/Mpc and (Mpc/h)^3
+                k, pnn = self.lbias.get_nonlinear_pnn(**bacco_cosmo)
+            else:
+                # get halofit reference
+                ccl_params_within_bounds = self._bacco_to_ccl_params(params_within_bounds)
+                ccl_cosmo_within_bounds = ccl.Cosmology(**ccl_params_within_bounds)
+                h = ccl_cosmo['h']
+                k_ccl_here = self.lbias.emulator['nonlinear']['k'] * h
+                pk_mm = np.array([ccl.nonlin_matter_power(ccl_cosmo, k_ccl_here, a)
+                                for a in bacco_cosmo['expfactor']])*h**3
+                pk_mm_0 = np.array([ccl.nonlin_matter_power(ccl_cosmo_within_bounds, k_ccl_here, a)
+                                for a in bacco_cosmo['expfactor']])*h**3
+                k, pks_0 = self.lbias.get_nonlinear_pnn(expfactor=bacco_cosmo['expfactor'], **params_within_bounds)
 
-            # Sign
-            sign = np.sign(pks_0)
-            lx = np.log(np.fabs(pks_0)/pk_mm_0)
-            x = pks_0 / pk_mm_0
+                # Sign
+                sign = np.sign(pks_0)
+                lx = np.log(np.fabs(pks_0)/pk_mm_0)
+                x = pks_0 / pk_mm_0
 
-            # Controlled parameter extrapolation
-            for par, in_bound in in_bounds.items():
-                if in_bound:
-                    continue
-                # print(f"Extrapolating {par}, {cospar[par]}, {cospar_0[par]}")
+                # Controlled parameter extrapolation
+                for par, in_bound in in_bounds.items():
+                    if in_bound:
+                        continue
+                    # print(f"Extrapolating {par}, {cospar[par]}, {cospar_0[par]}")
 
-                cpar = params_within_bounds.copy()
-                cpar[par] += self.dx_par[par]
-                # pk_mm_p, pks_p = self._get_lbias_pks_exact(cpar)
-                ccl_cpar = self._bacco_to_ccl_params(cpar)
-                ccl_cosmo_cpar = ccl.Cosmology(**ccl_cpar)
-                pk_mm_p = np.array([ccl.nonlin_matter_power(ccl_cosmo_cpar, k_ccl_here, a) for a in bacco_cosmo['expfactor']])*h**3
-                pks_p = self.lbias.get_nonlinear_pnn(expfactor=bacco_cosmo['expfactor'], **cpar)[1]
-                lxp = np.log(np.fabs(pks_p)/pk_mm_p)
-                xp = pks_p / pk_mm_p
+                    cpar = params_within_bounds.copy()
+                    cpar[par] += self.dx_par[par]
+                    # pk_mm_p, pks_p = self._get_lbias_pks_exact(cpar)
+                    ccl_cpar = self._bacco_to_ccl_params(cpar)
+                    ccl_cosmo_cpar = ccl.Cosmology(**ccl_cpar)
+                    pk_mm_p = np.array([ccl.nonlin_matter_power(ccl_cosmo_cpar, k_ccl_here, a) for a in bacco_cosmo['expfactor']])*h**3
+                    pks_p = self.lbias.get_nonlinear_pnn(expfactor=bacco_cosmo['expfactor'], **cpar)[1]
+                    lxp = np.log(np.fabs(pks_p)/pk_mm_p)
+                    xp = pks_p / pk_mm_p
 
-                cpar = params_within_bounds.copy()
-                cpar[par] -= self.dx_par[par]
-                # pk_mm_m, pks_m = self._get_lbias_pks_exact(cpar)
-                ccl_cpar = self._bacco_to_ccl_params(cpar)
-                ccl_cosmo_cpar = ccl.Cosmology(**ccl_cpar)
-                pk_mm_m = np.array([ccl.nonlin_matter_power(ccl_cosmo_cpar, k_ccl_here, a) for a in bacco_cosmo['expfactor']])*h**3
-                pks_m = self.lbias.get_nonlinear_pnn(expfactor=bacco_cosmo['expfactor'], **cpar)[1]
-                lxm = np.log(np.fabs(pks_m)/pk_mm_m)
-                xm = pks_m / pk_mm_m
+                    cpar = params_within_bounds.copy()
+                    cpar[par] -= self.dx_par[par]
+                    # pk_mm_m, pks_m = self._get_lbias_pks_exact(cpar)
+                    ccl_cpar = self._bacco_to_ccl_params(cpar)
+                    ccl_cosmo_cpar = ccl.Cosmology(**ccl_cpar)
+                    pk_mm_m = np.array([ccl.nonlin_matter_power(ccl_cosmo_cpar, k_ccl_here, a) for a in bacco_cosmo['expfactor']])*h**3
+                    pks_m = self.lbias.get_nonlinear_pnn(expfactor=bacco_cosmo['expfactor'], **cpar)[1]
+                    lxm = np.log(np.fabs(pks_m)/pk_mm_m)
+                    xm = pks_m / pk_mm_m
 
-                dlx_dp = (lxp-lxm)/(2*self.dx_par[par])
-                dx_dp = (xp-xm)/(2*self.dx_par[par])
+                    dlx_dp = (lxp-lxm)/(2*self.dx_par[par])
+                    dx_dp = (xp-xm)/(2*self.dx_par[par])
 
-                lx += dlx_dp * (bacco_cosmo[par] - params_within_bounds[par])
-                x += dx_dp * (bacco_cosmo[par] - params_within_bounds[par])
+                    lx += dlx_dp * (bacco_cosmo[par] - params_within_bounds[par])
+                    x += dx_dp * (bacco_cosmo[par] - params_within_bounds[par])
 
-            pnn = pk_mm * (sign*np.exp(lx) * self.log_der[:, None, None] +
-                  x * self.lin_der[:, None, None])
+                pnn = pk_mm * (sign*np.exp(lx) * self.log_der[:, None, None] +
+                    x * self.lin_der[:, None, None])
 
-        return k, pnn
+            out = {'k': k, 'pnn': pnn}
+            self.precomputed_pnn = out
+            return out
 
     def compute_clustering(self, cosmo_params, ccl_cosmo, bias1, bias2):
-        if 'gg' in self.precomputed_clustering:
-            return self.precomputed_clustering
-        else:
-            bias1 = np.concatenate(([1], bias1))
-            bias2 = np.concatenate(([1], bias2))
+        bias1 = np.concatenate(([1], bias1))
+        bias2 = np.concatenate(([1], bias2))
 
-            bacco_cosmo = self.extract_bacco_cosmo(cosmo_params)
+        bacco_cosmo = self.extract_bacco_cosmo(cosmo_params)
 
-            # k and pnn in h/Mpc and (Mpc/h)^3
-            k, pnn = self.get_baccoemu_pnn(bacco_cosmo, ccl_cosmo)
+        # k and pnn in h/Mpc and (Mpc/h)^3
+        pnn_obj = self.get_baccoemu_pnn(bacco_cosmo, ccl_cosmo)
+        k, pnn = pnn_obj['k'], pnn_obj['pnn']
 
-            # reorder the pnn so they can be simply summed
-            reorder =  [0,1,2,3,4,1,5,6,7,8,2,6,9,10,11,3,7,10,12,13,4,8,11,13,14]
-            reoredered_pnn = np.array([pnn[i] for i in reorder])
+        # reorder the pnn so they can be simply summed
+        reorder =  [0,1,2,3,4,1,5,6,7,8,2,6,9,10,11,3,7,10,12,13,4,8,11,13,14]
+        reoredered_pnn = np.array([pnn[i] for i in reorder])
 
-            p3d_gg = 0
-            p3d_gm_1 = 0
-            p3d_gm_2 = 0
-            ii = 0
-            for i in range(5):
-                for j in range(5):
-                    p3d_gg += bias1[i] * bias2[j] * reoredered_pnn[ii]
-                    if ii < 5:
-                        p3d_gm_1 += bias1[i] * reoredered_pnn[ii]
-                        p3d_gm_2 += bias2[j] * reoredered_pnn[ii]
-                    ii += 1
-            p3d_mm = reoredered_pnn[0]
+        p3d_gg = 0
+        p3d_gm_1 = 0
+        p3d_gm_2 = 0
+        ii = 0
+        for i in range(5):
+            for j in range(5):
+                p3d_gg += bias1[i] * bias2[j] * reoredered_pnn[ii]
+                if ii < 5:
+                    p3d_gm_1 += bias1[i] * reoredered_pnn[ii]
+                    p3d_gm_2 += bias2[j] * reoredered_pnn[ii]
+                ii += 1
+        p3d_mm = reoredered_pnn[0]
 
-            # p3d_gg still in (Mpc/h)^3, now convert it into Mpc^3
-            k = k * cosmo_params['h']
-            p3d_gg = p3d_gg / cosmo_params['h']**3
-            p3d_gm_1 = p3d_gm_1 / cosmo_params['h']**3
-            p3d_gm_2 = p3d_gm_2 / cosmo_params['h']**3
-            p3d_mm = p3d_mm / cosmo_params['h']**3
+        # p3d_gg still in (Mpc/h)^3, now convert it into Mpc^3
+        k = k * cosmo_params['h']
+        p3d_gg = p3d_gg / cosmo_params['h']**3
+        p3d_gm_1 = p3d_gm_1 / cosmo_params['h']**3
+        p3d_gm_2 = p3d_gm_2 / cosmo_params['h']**3
+        p3d_mm = p3d_mm / cosmo_params['h']**3
 
-            # extrapolate to match required k-range
-            p3d_gg = self.k_extrapolator(k, p3d_gg)
-            p3d_gm_1 = self.k_extrapolator(k, p3d_gm_1)
-            p3d_gm_2 = self.k_extrapolator(k, p3d_gm_2)
-            p3d_mm = self.k_extrapolator(k, p3d_mm)
+        # extrapolate to match required k-range
+        p3d_gg = self.k_extrapolator(k, p3d_gg)
+        p3d_gm_1 = self.k_extrapolator(k, p3d_gm_1)
+        p3d_gm_2 = self.k_extrapolator(k, p3d_gm_2)
+        p3d_mm = self.k_extrapolator(k, p3d_mm)
 
-            out = {'k': self.ccl_ks, 'gg': p3d_gg, 'gm_1': p3d_gm_1, 'gm_2': p3d_gm_2, 'mm': p3d_mm, 'a_s': self.ccl_as}
-            self.precomputed_clustering = out
+        out = {'k': self.ccl_ks, 'gg': p3d_gg, 'gm_1': p3d_gm_1, 'gm_2': p3d_gm_2, 'mm': p3d_mm, 'a_s': self.ccl_as}
 
-            return out
+        return out
 
     def compute_clustering_cross_matter(self, cosmo_params, ccl_cosmo, bias1):
-        if 'gm_1' in self.precomputed_clustering_cross_matter:
-            return self.precomputed_clustering_cross_matter
-        else:
-            bias1 = np.concatenate(([1], bias1))
+        bias1 = np.concatenate(([1], bias1))
 
-            bacco_cosmo = self.extract_bacco_cosmo(cosmo_params)
+        bacco_cosmo = self.extract_bacco_cosmo(cosmo_params)
 
-            # k and pnn in h/Mpc and (Mpc/h)^3
-            k, pnn = self.get_baccoemu_pnn(bacco_cosmo, ccl_cosmo)
+        # k and pnn in h/Mpc and (Mpc/h)^3
+        pnn_obj = self.get_baccoemu_pnn(bacco_cosmo, ccl_cosmo)
+        k, pnn = pnn_obj['k'], pnn_obj['pnn']
 
-            # reorder the pnn so they can be simply summed
-            reorder =  [0,1,2,3,4,1,5,6,7,8,2,6,9,10,11,3,7,10,12,13,4,8,11,13,14]
-            reoredered_pnn = np.array([pnn[i] for i in reorder])
+        # reorder the pnn so they can be simply summed
+        reorder =  [0,1,2,3,4,1,5,6,7,8,2,6,9,10,11,3,7,10,12,13,4,8,11,13,14]
+        reoredered_pnn = np.array([pnn[i] for i in reorder])
 
-            p3d_gm_1 = 0
-            for i in range(5):
-                p3d_gm_1 += bias1[i] * reoredered_pnn[i]
-            p3d_mm = reoredered_pnn[0]
+        p3d_gm_1 = 0
+        for i in range(5):
+            p3d_gm_1 += bias1[i] * reoredered_pnn[i]
+        p3d_mm = reoredered_pnn[0]
 
-            # p3d_gg still in (Mpc/h)^3, now convert it into Mpc^3
-            k = k * cosmo_params['h']
-            p3d_gm_1 = p3d_gm_1 / cosmo_params['h']**3
-            p3d_mm = p3d_mm / cosmo_params['h']**3
+        # p3d_gg still in (Mpc/h)^3, now convert it into Mpc^3
+        k = k * cosmo_params['h']
+        p3d_gm_1 = p3d_gm_1 / cosmo_params['h']**3
+        p3d_mm = p3d_mm / cosmo_params['h']**3
 
-            # extrapolate to match required k-range
-            p3d_gm_1 = self.k_extrapolator(k, p3d_gm_1)
-            p3d_mm = self.k_extrapolator(k, p3d_mm)
+        # extrapolate to match required k-range
+        p3d_gm_1 = self.k_extrapolator(k, p3d_gm_1)
+        p3d_mm = self.k_extrapolator(k, p3d_mm)
 
-            out = {'k': self.ccl_ks, 'gm_1': p3d_gm_1, 'mm': p3d_mm, 'a_s': self.ccl_as}
-            self.precomputed_clustering_cross_matter = out
+        out = {'k': self.ccl_ks, 'gm_1': p3d_gm_1, 'mm': p3d_mm, 'a_s': self.ccl_as}
+        self.precomputed_clustering_cross_matter = out
 
-            return out
+        return out
 
 
 class mpk_calculator:
