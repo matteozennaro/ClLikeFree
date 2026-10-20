@@ -5,8 +5,9 @@ from scipy.interpolate import CubicSpline
 import pyccl as ccl
 
 class heft_calculator:
-    def __init__(self, ccl_ks=None, ccl_as=None, use_cl_like_bias_convention=True):
+    def __init__(self, ccl_ks=None, ccl_as=None, mpk_nonlinear_model_name='Arico2023', use_cl_like_bias_convention=True):
         self.lbias = baccoemu.Lbias_expansion()
+        self.mpk = baccoemu.Matter_powerspectrum(nonlinear_model_name=mpk_nonlinear_model_name)
         self.ccl_ks = ccl_ks
         self.ccl_as = ccl_as
         self.use_cl_like_bias_convention = use_cl_like_bias_convention
@@ -123,6 +124,29 @@ class heft_calculator:
                 params_within_bounds[par] = val
         return in_bounds, params_within_bounds
 
+    def _matter_pk_check_bounds(self, bacco_cosmo_params):
+        in_bounds = {}
+        bacco_cosmo_params_standardized = {
+            'omega_cold': bacco_cosmo_params['omega_cold'],
+            'omega_baryon': bacco_cosmo_params['omega_baryon'],
+            'hubble': bacco_cosmo_params['hubble'],
+            'ns': bacco_cosmo_params['ns'],
+            'neutrino_mass': bacco_cosmo_params['neutrino_mass'],
+            'w0': bacco_cosmo_params['w0'],
+            'wa': bacco_cosmo_params['wa'],
+        }
+        if 'sigma8_cold' in bacco_cosmo_params:
+            bacco_cosmo_params_standardized['sigma8_cold'] = bacco_cosmo_params['sigma8_cold']
+        elif 'A_s' in bacco_cosmo_params:
+            sigma8_cold = self.mpk.get_sigma8(cold=True, **bacco_cosmo_params['A_s'])
+            bacco_cosmo_params_standardized['sigma8_cold'] = sigma8_cold
+        else:
+            raise RuntimeError('sigma8_cold or A_s must be specified in the cosmology parameters for bound checking')
+        for par, val in bacco_cosmo_params_standardized.items():
+            val0, valf = self.mpk.emulator['nonlinear']['bounds'][self.mpk.emulator['nonlinear']['keys'].index(par)]
+            in_bounds[par] = (val >= val0) & (val <= valf)
+        return in_bounds
+
     def _bacco_to_ccl_params(self, bacco_cosmo_params):
         ccl_params = {
             'Omega_c': bacco_cosmo_params['omega_cold'] - bacco_cosmo_params['omega_baryon'],
@@ -211,6 +235,38 @@ class heft_calculator:
             self.precomputed_pnn = out
             return out
 
+    def get_baccoemu_pk(self, k, bacco_cosmo, ccl_cosmo):
+        in_bounds = self._matter_pk_check_bounds(bacco_cosmo)
+        if np.all(list(in_bounds.values())):
+            # All parameters are within bounds, use the original parameters
+            # k and pk3d in h/Mpc and (Mpc/h)^3
+            # baccoemu nonlinear starts at k=0.01 h/Mpc, which is not enough to capture the
+            # turnaround of the power spectrum by simply extrapolating; but, it can extrapolate to low k
+            # (it sets the boost to 1 and extends the large-scale end with linear theory), so we
+            # can add points at low k.
+            # k = np.concatenate([np.logspace(-4, np.log10(k.min()), 30)[:-1], k])
+            k, pk3d = self.mpk.get_nonlinear_pk(cold=False, k=k, **bacco_cosmo)
+        else:
+            # switch to halofit
+            # k and pk3d in h/Mpc and (Mpc/h)^3
+            # k = self.mpk.emulator['nonlinear']['k']
+            # k = np.concatenate([np.logspace(-4, np.log10(k.min()), 30)[:-1], k])
+            h = ccl_cosmo['h']
+            k_ccl_here = k * h
+            pk3d = np.array([ccl.nonlin_matter_power(ccl_cosmo, k_ccl_here, a)
+                                for a in bacco_cosmo['expfactor']])*h**3
+
+        return k, pk3d
+
+    def get_linear_neutrino_power(self, k, bacco_cosmo):
+        O_nu = bacco_cosmo['neutrino_mass'] / (93.14 * bacco_cosmo['hubble']**2)
+        O_m = bacco_cosmo['omega_cold'] + bacco_cosmo['omega_baryon'] + O_nu
+        fnu = O_nu / O_m # this should be at a given redshift!!!
+        if fnu == 0:
+            return fnu, np.zeros_like(k)
+        p_nunu_lin = self.mpk.get_approximate_linear_neutrino_pk(k=k, **bacco_cosmo)[1]
+        return fnu, p_nunu_lin
+
     def compute_clustering(self, cosmo_params, ccl_cosmo, bias1, bias2):
         bias1 = np.concatenate(([1], bias1))
         bias2 = np.concatenate(([1], bias2))
@@ -239,7 +295,11 @@ class heft_calculator:
         for i in range(5):
             p3d_gm_1 += bias1[i] * reoredered_pnn[i]
             p3d_gm_2 += bias2[i] * reoredered_pnn[i]
-        p3d_mm = reoredered_pnn[0]
+
+        p3d_mm = self.get_baccoemu_pk(k, bacco_cosmo, ccl_cosmo)[1]
+        fnu, p_nunu_lin = self.get_linear_neutrino_power(k, bacco_cosmo)
+        p3d_gm_1 = (1-fnu) * p3d_gm_1 + fnu * np.sqrt(p3d_gg * p_nunu_lin)
+        p3d_gm_2 = (1-fnu) * p3d_gm_2 + fnu * np.sqrt(p3d_gg * p_nunu_lin)
 
         # p3d_gg still in (Mpc/h)^3, now convert it into Mpc^3
         k = k * cosmo_params['h']
@@ -271,10 +331,19 @@ class heft_calculator:
         reorder =  [0,1,2,3,4,1,5,6,7,8,2,6,9,10,11,3,7,10,12,13,4,8,11,13,14]
         reoredered_pnn = np.array([pnn[i] for i in reorder])
 
+        p3d_gg = 0
         p3d_gm_1 = 0
+        ii = 0
+        for i in range(5):
+            for j in range(5):
+                p3d_gg += bias1[i] * bias1[j] * reoredered_pnn[ii]
+                ii += 1
         for i in range(5):
             p3d_gm_1 += bias1[i] * reoredered_pnn[i]
-        p3d_mm = reoredered_pnn[0]
+
+        p3d_mm = self.get_baccoemu_pk(k, bacco_cosmo, ccl_cosmo)[1]
+        fnu, p_nunu_lin = self.get_linear_neutrino_power(k, bacco_cosmo)
+        p3d_gm_1 = (1-fnu) * p3d_gm_1 + fnu * np.sqrt(p3d_gg * p_nunu_lin)
 
         # p3d_gg still in (Mpc/h)^3, now convert it into Mpc^3
         k = k * cosmo_params['h']
