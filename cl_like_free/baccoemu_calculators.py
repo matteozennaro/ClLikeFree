@@ -479,7 +479,7 @@ class mpk_calculator:
             # can add points at low k.
             k = self.mpk.emulator['nonlinear']['k']
             k = np.concatenate([np.logspace(-4, np.log10(k.min()), 30)[:-1], k])
-            k, pk3d = self.mpk.get_nonlinear_pk(k=k, **bacco_cosmo)
+            k, pk3d = self.mpk.get_nonlinear_pk(cold=False,k=k, **bacco_cosmo)
         else:
             # switch to halofit
             # k and pk3d in h/Mpc and (Mpc/h)^3
