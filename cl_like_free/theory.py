@@ -4,8 +4,8 @@ from cl_like_free.baccoemu_calculators import heft_calculator, mpk_calculator
 from scipy.interpolate import interp1d
 
 class theory_calculator:
-    def __init__(self, cl_meta, bin_properties, tracer_qs, sample_type=None, bias_input_name='bias', use_baryons=None, ia_parameters=None, magnification_bias_parameters=None, nz_uncertainty_parameters=None, shape_model_parameters=None, debug=False):
-        self.heft_calculator = heft_calculator(ccl_ks=np.logspace(-4, 1, 200), ccl_as=np.linspace(0.4, 1.0, 50))
+    def __init__(self, cl_meta, bin_properties, tracer_qs, sample_type=None, bias_input_name='bias', use_baryons=None, ia_parameters=None, magnification_bias_parameters=None, nz_uncertainty_parameters=None, shape_model_parameters=None, use_cl_like_bias_convention=True, debug=False,):
+        self.heft_calculator = heft_calculator(ccl_ks=np.logspace(-4, 1, 200), ccl_as=np.linspace(0.4, 1.0, 50), use_cl_like_bias_convention=use_cl_like_bias_convention)
         self.mpk_calculator = mpk_calculator(ccl_ks=np.logspace(-4, np.log10(50), 1000), ccl_as=np.linspace(0.4, 1.0, 50))
         self.cl_meta = cl_meta
         self.bin_properties = bin_properties
@@ -22,6 +22,7 @@ class theory_calculator:
         self.bias_param_names = ['b1', 'b2', 'bs', 'blap']
         self.bias_input_name = bias_input_name
         self.bnames = ['b1', 'b2', 'bs', 'blap']
+        self.use_cl_like_bias_convention = use_cl_like_bias_convention
 
         if self.debug:
             print("Initializing theory calculator in debug mode")

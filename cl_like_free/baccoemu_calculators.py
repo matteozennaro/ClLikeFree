@@ -5,10 +5,11 @@ from scipy.interpolate import CubicSpline
 import pyccl as ccl
 
 class heft_calculator:
-    def __init__(self, ccl_ks=None, ccl_as=None):
+    def __init__(self, ccl_ks=None, ccl_as=None, use_cl_like_bias_convention=True):
         self.lbias = baccoemu.Lbias_expansion()
         self.ccl_ks = ccl_ks
         self.ccl_as = ccl_as
+        self.use_cl_like_bias_convention = use_cl_like_bias_convention
 
         if self.ccl_ks is None:
             raise RuntimeError('k-range must be specified')
@@ -29,6 +30,7 @@ class heft_calculator:
             b = self.lbias.emulator['nonlinear']['bounds'][i]
             self.lbias_bounds[key] = [b[0], b[1]]
 
+        self.lbias_prefactors_cl_like_convention = np.array([1, 1, 0.5, 0.5, 1, 1, 0.5, 0.5, 1, 0.25, 0.25, 0.5, 0.25, 0.5, 1])
         self.log_der = np.array([True, True, False, False, False, True, False, False,
                                  False, True, False, False, True, False, True])
         self.lin_der = ~ self.log_der
@@ -221,7 +223,10 @@ class heft_calculator:
 
         # reorder the pnn so they can be simply summed
         reorder =  [0,1,2,3,4,1,5,6,7,8,2,6,9,10,11,3,7,10,12,13,4,8,11,13,14]
-        reoredered_pnn = np.array([pnn[i] for i in reorder])
+        if self.use_cl_like_bias_convention:
+            reoredered_pnn = np.array([pnn[i] * self.lbias_prefactors_cl_like_convention[i] for i in reorder])
+        else:
+            reoredered_pnn = np.array([pnn[i] for i in reorder])
 
         p3d_gg = 0
         p3d_gm_1 = 0
@@ -230,10 +235,10 @@ class heft_calculator:
         for i in range(5):
             for j in range(5):
                 p3d_gg += bias1[i] * bias2[j] * reoredered_pnn[ii]
-                if ii < 5:
-                    p3d_gm_1 += bias1[i] * reoredered_pnn[ii]
-                    p3d_gm_2 += bias2[j] * reoredered_pnn[ii]
                 ii += 1
+        for i in range(5):
+            p3d_gm_1 += bias1[i] * reoredered_pnn[i]
+            p3d_gm_2 += bias2[i] * reoredered_pnn[i]
         p3d_mm = reoredered_pnn[0]
 
         # p3d_gg still in (Mpc/h)^3, now convert it into Mpc^3

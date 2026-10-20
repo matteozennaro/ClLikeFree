@@ -5,7 +5,7 @@ from .theory import theory_calculator
 __all__ = ['Likelihood']
 
 class Likelihood:
-    def __init__(self, fits_file=None, bins=None, twopoints=None, defaults=None, sample_type='convolve', bias_input_name='bias', use_baryons=False, ia_parameters=None, magnification_bias_parameters=None, nz_uncertainty_parameters=None, shape_model_parameters=None, debug=False):
+    def __init__(self, fits_file=None, bins=None, twopoints=None, defaults=None, sample_type='convolve', bias_input_name='bias', use_baryons=False, ia_parameters=None, magnification_bias_parameters=None, nz_uncertainty_parameters=None, shape_model_parameters=None, use_cl_like_bias_convention=True, debug=False):
         self.fits_file = fits_file
         self.bins = bins
         self.twopoints = twopoints
@@ -30,9 +30,11 @@ class Likelihood:
         self.nz_uncertainty_parameters = nz_uncertainty_parameters
         self.shape_model_parameters = shape_model_parameters
         self.debug = debug
+        self.use_cl_like_bias_convention = use_cl_like_bias_convention
         self.theory = theory_calculator(cl_meta, bin_properties, tracer_qs, sample_type=self.sample_type, bias_input_name=self.bias_input_name, use_baryons=self.use_baryons,
                                         ia_parameters=self.ia_parameters, magnification_bias_parameters=self.magnification_bias_parameters,
-                                        nz_uncertainty_parameters=self.nz_uncertainty_parameters, shape_model_parameters=self.shape_model_parameters, debug=self.debug)  # Initialize with default cosmological parameters
+                                        nz_uncertainty_parameters=self.nz_uncertainty_parameters, shape_model_parameters=self.shape_model_parameters,
+                                        use_cl_like_bias_convention=self.use_cl_like_bias_convention, debug=self.debug)
 
     def get_theory_vector(self, sampling_params):
         return self.theory.compute_theory_vector(sampling_params)
