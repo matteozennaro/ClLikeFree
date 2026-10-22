@@ -237,6 +237,7 @@ class heft_calculator:
 
     def get_baccoemu_pk(self, k, bacco_cosmo, ccl_cosmo):
         in_bounds = self._matter_pk_check_bounds(bacco_cosmo)
+        mask = k < self.mpk.emulator['nonlinear']['k'].max()
         if np.all(list(in_bounds.values())):
             # All parameters are within bounds, use the original parameters
             # k and pk3d in h/Mpc and (Mpc/h)^3
@@ -245,7 +246,7 @@ class heft_calculator:
             # (it sets the boost to 1 and extends the large-scale end with linear theory), so we
             # can add points at low k.
             # k = np.concatenate([np.logspace(-4, np.log10(k.min()), 30)[:-1], k])
-            k, pk3d = self.mpk.get_nonlinear_pk(cold=False, k=k, **bacco_cosmo)
+            k, pk3d = self.mpk.get_nonlinear_pk(cold=False, k=k[mask], **bacco_cosmo)
         else:
             # switch to halofit
             # k and pk3d in h/Mpc and (Mpc/h)^3
@@ -296,13 +297,14 @@ class heft_calculator:
             p3d_gm_1 += bias1[i] * reoredered_pnn[i]
             p3d_gm_2 += bias2[i] * reoredered_pnn[i]
 
-        p3d_mm = self.get_baccoemu_pk(k, bacco_cosmo, ccl_cosmo)[1]
+        k_mm, p3d_mm = self.get_baccoemu_pk(k, bacco_cosmo, ccl_cosmo)
         fnu, p_nunu_lin = self.get_linear_neutrino_power(k, bacco_cosmo)
         p3d_gm_1 = (1-fnu) * p3d_gm_1 + fnu * np.sqrt(p3d_gg * p_nunu_lin)
         p3d_gm_2 = (1-fnu) * p3d_gm_2 + fnu * np.sqrt(p3d_gg * p_nunu_lin)
 
         # p3d_gg still in (Mpc/h)^3, now convert it into Mpc^3
         k = k * cosmo_params['h']
+        k_mm = k_mm * cosmo_params['h']
         p3d_gg = p3d_gg / cosmo_params['h']**3
         p3d_gm_1 = p3d_gm_1 / cosmo_params['h']**3
         p3d_gm_2 = p3d_gm_2 / cosmo_params['h']**3
@@ -312,7 +314,7 @@ class heft_calculator:
         p3d_gg = self.k_extrapolator(k, p3d_gg)
         p3d_gm_1 = self.k_extrapolator(k, p3d_gm_1)
         p3d_gm_2 = self.k_extrapolator(k, p3d_gm_2)
-        p3d_mm = self.k_extrapolator(k, p3d_mm)
+        p3d_mm = self.k_extrapolator(k_mm, p3d_mm)
 
         out = {'k': self.ccl_ks, 'gg': p3d_gg, 'gm_1': p3d_gm_1, 'gm_2': p3d_gm_2, 'mm': p3d_mm, 'a_s': self.ccl_as}
 
@@ -329,7 +331,10 @@ class heft_calculator:
 
         # reorder the pnn so they can be simply summed
         reorder =  [0,1,2,3,4,1,5,6,7,8,2,6,9,10,11,3,7,10,12,13,4,8,11,13,14]
-        reoredered_pnn = np.array([pnn[i] for i in reorder])
+        if self.use_cl_like_bias_convention:
+            reoredered_pnn = np.array([pnn[i] * self.lbias_prefactors_cl_like_convention[i] for i in reorder])
+        else:
+            reoredered_pnn = np.array([pnn[i] for i in reorder])
 
         p3d_gg = 0
         p3d_gm_1 = 0
@@ -341,18 +346,20 @@ class heft_calculator:
         for i in range(5):
             p3d_gm_1 += bias1[i] * reoredered_pnn[i]
 
-        p3d_mm = self.get_baccoemu_pk(k, bacco_cosmo, ccl_cosmo)[1]
+        k_mm = self.ccl_ks / cosmo_params['h']
+        k_mm, p3d_mm = self.get_baccoemu_pk(k_mm, bacco_cosmo, ccl_cosmo)
         fnu, p_nunu_lin = self.get_linear_neutrino_power(k, bacco_cosmo)
         p3d_gm_1 = (1-fnu) * p3d_gm_1 + fnu * np.sqrt(p3d_gg * p_nunu_lin)
 
         # p3d_gg still in (Mpc/h)^3, now convert it into Mpc^3
         k = k * cosmo_params['h']
+        k_mm = k_mm * cosmo_params['h']
         p3d_gm_1 = p3d_gm_1 / cosmo_params['h']**3
         p3d_mm = p3d_mm / cosmo_params['h']**3
 
         # extrapolate to match required k-range
         p3d_gm_1 = self.k_extrapolator(k, p3d_gm_1)
-        p3d_mm = self.k_extrapolator(k, p3d_mm)
+        p3d_mm = self.k_extrapolator(k_mm, p3d_mm)
 
         out = {'k': self.ccl_ks, 'gm_1': p3d_gm_1, 'mm': p3d_mm, 'a_s': self.ccl_as}
         self.precomputed_clustering_cross_matter = out
