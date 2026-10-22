@@ -1,0 +1,31 @@
+ -log(Like) = 133.27602162193853
+  chi-sq    = 266.55204324387705
+
+    1  2.121740288e+00   A_sE9                   10^9A_{\rm s}
+    2  3.099090441e-01   Omega_m                 \Omega_{\rm m}
+    3  6.866723103e-01   h                       h
+    4  6.167388285e-02   Omega_b                 \Omega_{\rm b}
+    5  1.043049761e+00   n_s                     n_{\rm s}
+    9  1.351657140e+01   M_c                     \log_{10}(M_c)
+   10  -2.992998731e-01  eta                     \log_{10}(\eta)
+   11  -1.995561419e-01  beta                    \log_{10}(\beta)
+   12  1.169051166e+01   M1_z0_cen               \log_{10}(M_{z_0, {\rm cen}})
+   13  -8.331786486e-01  theta_inn               \log_{10}(\vartheta_{\rm inn})
+   14  2.271948052e-01   theta_out               \log_{10}(\vartheta_{\rm out})
+   15  1.185909778e+01   M_inn                   \log_{10}(M_{\rm inn})
+   16  -6.298301796e-03  bias_DESY3wl__0_m       m^{DESY3wl_0}
+   17  -1.968998233e-02  bias_DESY3wl__1_m       m^{DESY3wl_1}
+   18  -2.654805267e-02  bias_DESY3wl__2_m       m^{DESY3wl_2}
+   19  -3.547920999e-02  bias_DESY3wl__3_m       m^{DESY3wl_3}
+   20  4.877934466e-03   limber_DESY3wl__0_dz    \Delta z^{DESY3wl_0}
+   21  -3.610574960e-03  limber_DESY3wl__1_dz    \Delta z^{DESY3wl_1}
+   22  -4.729609716e-03  limber_DESY3wl__2_dz    \Delta z^{DESY3wl_2}
+   23  3.650678019e-03   limber_DESY3wl__3_dz    \Delta z^{DESY3wl_3}
+   24  1.397529414e-01   bias_DESY3wl_A_IA       A^{\rm DESY3wl}_{IA}
+   25  5.340038001e-03   limber_DESY3wl_eta_IA   \eta^{\rm DESY3wl}_{IA}
+
+    6  0.06              m_nu                    m\ nu
+
+    7  7.856796611e-01   sigma8                  \sigma_8
+    8  7.985498061e-01   S8                      S_8
+   26  3.137337714e+02   chi2__cl_like.ClLike    \chi^2_{\rm cl\ like.ClLike}
