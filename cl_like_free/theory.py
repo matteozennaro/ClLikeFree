@@ -380,20 +380,27 @@ class theory_calculator:
             pk2d_mm = ccl.Pk2D(a_arr=a_s, lk_arr=np.log(k), pk_arr=p3d_mm, is_logp=False)
 
         # Now the projections
+        # Clustering tracer for bin1
         dndz = self._get_nz(name1, bias_params)
         z = dndz[0]
         oz = np.ones_like(z)
         tr1 = ccl.NumberCountsTracer(ccl_cosmo, dndz=dndz, bias=(z, oz), has_rsd=False)
 
+        # Tracer for magnification bias
+        if self.use_magnification_bias:
+            trm1 = ccl.NumberCountsTracer(ccl_cosmo, dndz=dndz,
+                                          bias=(z, z*0), has_rsd=False,
+                                          mag_bias=(z, oz/5.))
+        # Clustering tracer for bin2
         dndz = self._get_nz(name2, bias_params)
         z = dndz[0]
         oz = np.ones_like(z)
         tr2 = ccl.NumberCountsTracer(ccl_cosmo, dndz=dndz, bias=(z, oz), has_rsd=False)
 
-        # Tracer for magnification bias
-        trm = ccl.NumberCountsTracer(ccl_cosmo, dndz=dndz,
-                                     bias=(z, z*0), has_rsd=False,
-                                     mag_bias=(z, oz/5.))
+        if self.use_magnification_bias:
+            trm2 = ccl.NumberCountsTracer(ccl_cosmo, dndz=dndz,
+                                          bias=(z, z*0), has_rsd=False,
+                                          mag_bias=(z, oz/5.))
 
         if self.sample_cen:
             ls = clm['l_eff']
@@ -405,18 +412,22 @@ class theory_calculator:
         cl = ccl.angular_cl(ccl_cosmo, tr1, tr2, ls,
                             limber_integration_method=self.limber_integration_method,
                             p_of_k_a=pk2d_gg) * clm['pixbeam']
-        cl_g1mag = ccl.angular_cl(ccl_cosmo, tr1, trm, ls,
-                            limber_integration_method=self.limber_integration_method,
-                            p_of_k_a=pk2d_gm_1) * clm['pixbeam']
-        cl_g2mag = ccl.angular_cl(ccl_cosmo, tr2, trm, ls,
-                            limber_integration_method=self.limber_integration_method,
-                            p_of_k_a=pk2d_gm_2) * clm['pixbeam']
-        cl_magmag = ccl.angular_cl(ccl_cosmo, trm, trm, ls,
-                            limber_integration_method=self.limber_integration_method,
-                            p_of_k_a=pk2d_mm) * clm['pixbeam']
-        cl_gg = cl + S1 * cl_g1mag + S2 * cl_g2mag + S1 * S2 * cl_magmag
+        if self.use_magnification_bias:
+            cl_g1mag2 = ccl.angular_cl(ccl_cosmo, tr1, trm2, ls,
+                                       limber_integration_method=self.limber_integration_method,
+                                       p_of_k_a=pk2d_gm_1) * clm['pixbeam']
+            cl_g2mag1 = ccl.angular_cl(ccl_cosmo, tr2, trm1, ls,
+                                       limber_integration_method=self.limber_integration_method,
+                                       p_of_k_a=pk2d_gm_2) * clm['pixbeam']
+            cl_mag1mag2 = ccl.angular_cl(ccl_cosmo, trm1, trm2, ls,
+                                         limber_integration_method=self.limber_integration_method,
+                                         p_of_k_a=pk2d_mm) * clm['pixbeam']
+        else:
+            cl_g1mag2 = 0
+            cl_g2mag1 = 0
+            cl_mag1mag2 = 0
 
-
+        cl_gg = cl + S1 * cl_g1mag2 + S2 * cl_g2mag1 + S1 * S2 * cl_mag1mag2
 
         cl_gg = cl_gg if self.sample_cen else self._eval_interp_cl(cl_gg, clm['l_bpw'], clm['w_bpw'])
 
@@ -521,11 +532,11 @@ class theory_calculator:
         tr1 = ccl.NumberCountsTracer(ccl_cosmo, dndz=dndz, bias=(z, oz), has_rsd=False)
 
 
-
         # Tracer for magnification bias
-        trm = ccl.NumberCountsTracer(ccl_cosmo, dndz=dndz,
-                                        bias=(z, z*0), has_rsd=False,
-                                        mag_bias=(z, oz/5.))
+        if self.use_magnification_bias:
+            trm = ccl.NumberCountsTracer(ccl_cosmo, dndz=dndz,
+                                            bias=(z, z*0), has_rsd=False,
+                                            mag_bias=(z, oz/5.))
 
         # Now the shear part
 
@@ -551,11 +562,13 @@ class theory_calculator:
         cl = ccl.angular_cl(ccl_cosmo, tr1, tr2, ls,
                             limber_integration_method=self.limber_integration_method,
                             p_of_k_a=pk2d_gm_1) * clm['pixbeam']
-        cl_smag = ccl.angular_cl(ccl_cosmo, tr2, trm, ls,
-                            limber_integration_method=self.limber_integration_method,
-                            p_of_k_a=pk2d_mm) * clm['pixbeam']
+        if self.use_magnification_bias:
+            cl_smag = ccl.angular_cl(ccl_cosmo, tr2, trm, ls,
+                                limber_integration_method=self.limber_integration_method,
+                                p_of_k_a=pk2d_mm) * clm['pixbeam']
+        else:
+            cl_smag = 0
         cl_gs = (1 + m2) * (cl + S1 * cl_smag)
-
 
         cl_gs = cl_gs if self.sample_cen else self._eval_interp_cl(cl_gs, clm['l_bpw'], clm['w_bpw'])
 
@@ -608,12 +621,11 @@ class theory_calculator:
         oz = np.ones_like(z)
         tr1 = ccl.NumberCountsTracer(ccl_cosmo, dndz=dndz, bias=(z, oz), has_rsd=False)
 
-
-
         # Tracer for magnification bias
-        trm = ccl.NumberCountsTracer(ccl_cosmo, dndz=dndz,
-                                        bias=(z, z*0), has_rsd=False,
-                                        mag_bias=(z, oz/5.))
+        if self.use_magnification_bias:
+            trm = ccl.NumberCountsTracer(ccl_cosmo, dndz=dndz,
+                                         bias=(z, z*0), has_rsd=False,
+                                         mag_bias=(z, oz/5.))
 
         # now the cmb-lensing part
 
@@ -630,9 +642,12 @@ class theory_calculator:
         cl = ccl.angular_cl(ccl_cosmo, tr1, tr2, ls,
                             limber_integration_method=self.limber_integration_method,
                             p_of_k_a=pk2d_gm_1) * clm['pixbeam']
-        cl_kmag = ccl.angular_cl(ccl_cosmo, tr2, trm, ls,
-                            limber_integration_method=self.limber_integration_method,
-                            p_of_k_a=pk2d_mm) * clm['pixbeam']
+        if self.use_magnification_bias:
+            cl_kmag = ccl.angular_cl(ccl_cosmo, tr2, trm, ls,
+                                limber_integration_method=self.limber_integration_method,
+                                p_of_k_a=pk2d_mm) * clm['pixbeam']
+        else:
+            cl_kmag = 0
         cl_gk = cl + S1 * cl_kmag
 
         cl_gk = cl_gk if self.sample_cen else self._eval_interp_cl(cl_gk, clm['l_bpw'], clm['w_bpw'])

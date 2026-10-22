@@ -37,9 +37,13 @@ class heft_calculator:
         self.lin_der = ~ self.log_der
 
         self.precomputed_pnn = {}
+        self.precomputed_pmm = {}
+        self.precomputed_linear_neutrino_power = {}
 
     def clear_cache(self):
         self.precomputed_pnn = {}
+        self.precomputed_pmm = {}
+        self.precomputed_linear_neutrino_power = {}
 
     def extract_bacco_cosmo(self, params):
         bacco_cosmo = {
@@ -235,38 +239,50 @@ class heft_calculator:
             self.precomputed_pnn = out
             return out
 
-    def get_baccoemu_pk(self, k, bacco_cosmo, ccl_cosmo):
-        in_bounds = self._matter_pk_check_bounds(bacco_cosmo)
-        mask = k < self.mpk.emulator['nonlinear']['k'].max()
-        if np.all(list(in_bounds.values())):
-            # All parameters are within bounds, use the original parameters
-            # k and pk3d in h/Mpc and (Mpc/h)^3
-            # baccoemu nonlinear starts at k=0.01 h/Mpc, which is not enough to capture the
-            # turnaround of the power spectrum by simply extrapolating; but, it can extrapolate to low k
-            # (it sets the boost to 1 and extends the large-scale end with linear theory), so we
-            # can add points at low k.
-            # k = np.concatenate([np.logspace(-4, np.log10(k.min()), 30)[:-1], k])
-            k, pk3d = self.mpk.get_nonlinear_pk(cold=False, k=k[mask], **bacco_cosmo)
+    def get_baccoemu_pk(self, bacco_cosmo, ccl_cosmo):
+        if 'pk3d' in self.precomputed_pmm:
+            return self.precomputed_pmm
         else:
-            # switch to halofit
-            # k and pk3d in h/Mpc and (Mpc/h)^3
-            # k = self.mpk.emulator['nonlinear']['k']
-            # k = np.concatenate([np.logspace(-4, np.log10(k.min()), 30)[:-1], k])
-            h = ccl_cosmo['h']
-            k_ccl_here = k * h
-            pk3d = np.array([ccl.nonlin_matter_power(ccl_cosmo, k_ccl_here, a)
-                                for a in bacco_cosmo['expfactor']])*h**3
+            in_bounds = self._matter_pk_check_bounds(bacco_cosmo)
+            k = self.ccl_ks / bacco_cosmo['hubble']
+            mask = k < self.mpk.emulator['nonlinear']['k'].max()
+            if np.all(list(in_bounds.values())):
+                # All parameters are within bounds, use the original parameters
+                # k and pk3d in h/Mpc and (Mpc/h)^3
+                # baccoemu nonlinear starts at k=0.01 h/Mpc, which is not enough to capture the
+                # turnaround of the power spectrum by simply extrapolating; but, it can extrapolate to low k
+                # (it sets the boost to 1 and extends the large-scale end with linear theory), so we
+                # can add points at low k.
+                # k = np.concatenate([np.logspace(-4, np.log10(k.min()), 30)[:-1], k])
+                k, pk3d = self.mpk.get_nonlinear_pk(cold=False, k=k[mask], **bacco_cosmo)
+            else:
+                # switch to halofit
+                # k and pk3d in h/Mpc and (Mpc/h)^3
+                # k = self.mpk.emulator['nonlinear']['k']
+                # k = np.concatenate([np.logspace(-4, np.log10(k.min()), 30)[:-1], k])
+                h = ccl_cosmo['h']
+                k_ccl_here = k * h
+                pk3d = np.array([ccl.nonlin_matter_power(ccl_cosmo, k_ccl_here, a)
+                                    for a in bacco_cosmo['expfactor']])*h**3
+            out = {'k': k, 'pk3d': pk3d}
+            self.precomputed_pmm = out
+            return out
 
-        return k, pk3d
-
-    def get_linear_neutrino_power(self, k, bacco_cosmo):
-        O_nu = bacco_cosmo['neutrino_mass'] / (93.14 * bacco_cosmo['hubble']**2)
-        O_m = bacco_cosmo['omega_cold'] + bacco_cosmo['omega_baryon'] + O_nu
-        fnu = O_nu / O_m # this should be at a given redshift!!!
-        if fnu == 0:
-            return fnu, np.zeros_like(k)
-        p_nunu_lin = self.mpk.get_approximate_linear_neutrino_pk(k=k, **bacco_cosmo)[1]
-        return fnu, p_nunu_lin
+    def get_linear_neutrino_power(self, bacco_cosmo):
+        if 'linear_neutrino_power' in self.precomputed_linear_neutrino_power:
+            return self.precomputed_linear_neutrino_power
+        else:
+            k = self.lbias.emulator['nonlinear']['k']
+            O_nu = bacco_cosmo['neutrino_mass'] / (93.14 * bacco_cosmo['hubble']**2)
+            O_m = bacco_cosmo['omega_cold'] + bacco_cosmo['omega_baryon'] + O_nu
+            fnu = O_nu / O_m # TODO:this should be at a given redshift!!!
+            if fnu == 0:
+                fnu, p_nunu_lin = 0, np.zeros_like(k)
+            else:
+                p_nunu_lin = self.mpk.get_approximate_linear_neutrino_pk(k=k, **bacco_cosmo)[1]
+            out = {'fnu': fnu, 'p_nunu_lin': p_nunu_lin}
+            self.precomputed_linear_neutrino_power = out
+            return out
 
     def compute_clustering(self, cosmo_params, ccl_cosmo, bias1, bias2):
         bias1 = np.concatenate(([1], bias1))
@@ -297,8 +313,10 @@ class heft_calculator:
             p3d_gm_1 += bias1[i] * reoredered_pnn[i]
             p3d_gm_2 += bias2[i] * reoredered_pnn[i]
 
-        k_mm, p3d_mm = self.get_baccoemu_pk(k, bacco_cosmo, ccl_cosmo)
-        fnu, p_nunu_lin = self.get_linear_neutrino_power(k, bacco_cosmo)
+        mm_dict = self.get_baccoemu_pk(bacco_cosmo, ccl_cosmo)
+        k_mm, p3d_mm = mm_dict['k'], mm_dict['pk3d']
+        nu_dict = self.get_linear_neutrino_power(bacco_cosmo)
+        fnu, p_nunu_lin = nu_dict['fnu'], nu_dict['p_nunu_lin']
         p3d_gm_1 = (1-fnu) * p3d_gm_1 + fnu * np.sqrt(p3d_gg * p_nunu_lin)
         p3d_gm_2 = (1-fnu) * p3d_gm_2 + fnu * np.sqrt(p3d_gg * p_nunu_lin)
 
@@ -346,9 +364,10 @@ class heft_calculator:
         for i in range(5):
             p3d_gm_1 += bias1[i] * reoredered_pnn[i]
 
-        k_mm = self.ccl_ks / cosmo_params['h']
-        k_mm, p3d_mm = self.get_baccoemu_pk(k_mm, bacco_cosmo, ccl_cosmo)
-        fnu, p_nunu_lin = self.get_linear_neutrino_power(k, bacco_cosmo)
+        mm_dict = self.get_baccoemu_pk(bacco_cosmo, ccl_cosmo)
+        k_mm, p3d_mm = mm_dict['k'], mm_dict['pk3d']
+        nu_dict = self.get_linear_neutrino_power(bacco_cosmo)
+        fnu, p_nunu_lin = nu_dict['fnu'], nu_dict['p_nunu_lin']
         p3d_gm_1 = (1-fnu) * p3d_gm_1 + fnu * np.sqrt(p3d_gg * p_nunu_lin)
 
         # p3d_gg still in (Mpc/h)^3, now convert it into Mpc^3
