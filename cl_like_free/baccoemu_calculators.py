@@ -362,7 +362,6 @@ class heft_calculator:
         p3d_mm = self.k_extrapolator(k_mm, p3d_mm)
 
         out = {'k': self.ccl_ks, 'gm_1': p3d_gm_1, 'mm': p3d_mm, 'a_s': self.ccl_as}
-        self.precomputed_clustering_cross_matter = out
 
         return out
 
