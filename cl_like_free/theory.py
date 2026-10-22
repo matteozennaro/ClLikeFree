@@ -554,7 +554,7 @@ class theory_calculator:
         cl_smag = ccl.angular_cl(ccl_cosmo, tr2, trm, ls,
                             limber_integration_method=self.limber_integration_method,
                             p_of_k_a=pk2d_mm) * clm['pixbeam']
-        cl_gs = (1 + m2) * cl + S1 * cl_smag
+        cl_gs = (1 + m2) * (cl + S1 * cl_smag)
 
 
         cl_gs = cl_gs if self.sample_cen else self._eval_interp_cl(cl_gs, clm['l_bpw'], clm['w_bpw'])
