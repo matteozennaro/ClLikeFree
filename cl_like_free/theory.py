@@ -5,18 +5,24 @@ from scipy.interpolate import interp1d
 
 class theory_calculator:
     def __init__(self, cl_meta, bin_properties, tracer_qs, sample_type=None, bias_input_name='bias', use_baryons=None, ia_parameters=None, magnification_bias_parameters=None, nz_uncertainty_parameters=None, shape_model_parameters=None, use_cl_like_bias_convention=True, debug=False,):
-        self.heft_calculator = heft_calculator(ccl_ks=np.logspace(-4, 1, 200), ccl_as=np.linspace(0.4, 1.0, 50), use_cl_like_bias_convention=use_cl_like_bias_convention)
+        # Set default CCL parameters
+        # self.ccl_baccoemu_linear = ccl.BaccoemuLinear()
+        # self.ccl_baccoemu_nonlinear = ccl.BaccoemuNonlinear()
+        self.ccl_defaults = {
+            'transfer_function': 'boltzmann_camb',
+            'matter_pk': 'halofit',
+            # 'transfer_function': self.ccl_baccoemu_linear,
+            # 'matter_pk': self.ccl_baccoemu_nonlinear
+            'extra_parameters': {'camb': {'dark_energy_model': 'ppf'}}
+        }
+        self.ccl_arguments = {}
+        self.heft_calculator = heft_calculator(ccl_ks=np.logspace(-4, 1, 200), ccl_as=np.linspace(0.4, 1.0, 50), use_cl_like_bias_convention=use_cl_like_bias_convention, ccl_defaults=self.ccl_defaults)
         self.mpk_calculator = mpk_calculator(ccl_ks=np.logspace(-4, np.log10(50), 1000), ccl_as=np.linspace(0.4, 1.0, 50))
         self.cl_meta = cl_meta
         self.bin_properties = bin_properties
         self.tracer_qs = tracer_qs
         self.debug = debug
-        # Set default CCL parameters
-        self.ccl_defaults = {
-            'transfer_function': 'boltzmann_camb',
-            'matter_pk': 'halofit',
-        }
-        self.ccl_arguments = {}
+
 
         self.cosmo_param_names = ['Omega_cdm', 'Omega_b', 'h', 'n_s', 'M_nu', 'w0', 'wa', 'A_s', 'A_sE9', 'sigma8']
         self.bias_param_names = ['b1', 'b2', 'bs', 'blap']
@@ -289,8 +295,10 @@ class theory_calculator:
         ccl_cosmo = ccl.Cosmology(**ccl_params,
                               transfer_function=self.ccl_defaults['transfer_function'],
                               matter_power_spectrum=self.ccl_defaults['matter_pk'],
+                              extra_parameters=self.ccl_defaults.get('extra_parameters', {}),
                               **self.ccl_arguments)
-        ccl_cosmo.sigma8()
+        # ccl_cosmo.sigma8()
+        ccl_cosmo.compute_distances()
 
         theory_vector = []
         for clm in self.cl_meta:

@@ -5,12 +5,13 @@ from scipy.interpolate import CubicSpline
 import pyccl as ccl
 
 class heft_calculator:
-    def __init__(self, ccl_ks=None, ccl_as=None, mpk_nonlinear_model_name='Arico2023', use_cl_like_bias_convention=True):
+    def __init__(self, ccl_ks=None, ccl_as=None, mpk_nonlinear_model_name='Arico2023', use_cl_like_bias_convention=True, ccl_defaults=None):
         self.lbias = baccoemu.Lbias_expansion()
         self.mpk = baccoemu.Matter_powerspectrum(nonlinear_model_name=mpk_nonlinear_model_name)
         self.ccl_ks = ccl_ks
         self.ccl_as = ccl_as
         self.use_cl_like_bias_convention = use_cl_like_bias_convention
+        self.ccl_defaults = ccl_defaults
 
         if self.ccl_ks is None:
             raise RuntimeError('k-range must be specified')
@@ -74,22 +75,35 @@ class heft_calculator:
         return bacco_cosmo
 
     def k_extrapolator(self, k, pk):
-        log_k = np.log(k)
         log_k_extrap = np.log(self.ccl_ks)
 
         pk_extrap = []
         for i in range(len(pk)):
             if np.any(pk[i] <= 0):
-                raise RuntimeError('Input power spectrum contains non-positive values')
-            log_pk = np.log(pk[i])
-
-            # cubicspline interpolation in log-log space
-            spline = CubicSpline(log_k, log_pk, extrapolate=False)
-            # linear extrapolation in log-log space
-            log_pk_low = log_pk[0] + (log_pk[1] - log_pk[0]) / (log_k[1] - log_k[0]) * (log_k_extrap - log_k[0])
-            log_pk_high = log_pk[-1] + (log_pk[-1] - log_pk[-2]) / (log_k[-1] - log_k[-2]) * (log_k_extrap - log_k[-1])
-            log_pk_extrap = np.where(log_k_extrap < log_k[0], log_pk_low, np.where(log_k_extrap > log_k[-1], log_pk_high, spline(log_k_extrap)))
-            pk_extrap.append(np.exp(log_pk_extrap))
+                mask = np.isfinite(pk[i])
+                log_k = np.log(k[mask])
+                sign = np.sign(pk[i][mask])
+                abs_pk = np.fabs(pk[i][mask])
+                log_pk = np.log(abs_pk)
+                # cubicspline interpolation in log-log space
+                spline = CubicSpline(log_k, log_pk, extrapolate=False)
+                # linear extrapolation in log-log space
+                log_pk_low = log_pk[0] + (log_pk[1] - log_pk[0]) / (log_k[1] - log_k[0]) * (log_k_extrap - log_k[0])
+                log_pk_high = log_pk[-1] + (log_pk[-1] - log_pk[-2]) / (log_k[-1] - log_k[-2]) * (log_k_extrap - log_k[-1])
+                log_pk_extrap = np.where(log_k_extrap < log_k[0], np.exp(log_pk_low) * sign[0], np.where(log_k_extrap > log_k[-1], np.exp(log_pk_high) * sign[-1], np.exp(spline(log_k_extrap))))
+                log_pk_extrap[(log_k_extrap > log_k[0]) & (log_k_extrap < log_k[-1])] *= sign[np.searchsorted(log_k, log_k_extrap[(log_k_extrap > log_k[0]) & (log_k_extrap < log_k[-1])])]
+                pk_extrap.append(log_pk_extrap)
+            else:
+                mask = np.isfinite(pk[i])
+                log_k = np.log(k[mask])
+                log_pk = np.log(pk[i][mask])
+                # cubicspline interpolation in log-log space
+                spline = CubicSpline(log_k, log_pk, extrapolate=False)
+                # linear extrapolation in log-log space
+                log_pk_low = log_pk[0] + (log_pk[1] - log_pk[0]) / (log_k[1] - log_k[0]) * (log_k_extrap - log_k[0])
+                log_pk_high = log_pk[-1] + (log_pk[-1] - log_pk[-2]) / (log_k[-1] - log_k[-2]) * (log_k_extrap - log_k[-1])
+                log_pk_extrap = np.where(log_k_extrap < log_k[0], log_pk_low, np.where(log_k_extrap > log_k[-1], log_pk_high, spline(log_k_extrap)))
+                pk_extrap.append(np.exp(log_pk_extrap))
         return np.array(pk_extrap)
 
     def _cosmo_params_for_bound_check(self, bacco_cosmo_params):
@@ -186,7 +200,10 @@ class heft_calculator:
             else:
                 # get halofit reference
                 ccl_params_within_bounds = self._bacco_to_ccl_params(params_within_bounds)
-                ccl_cosmo_within_bounds = ccl.Cosmology(**ccl_params_within_bounds)
+                ccl_cosmo_within_bounds = ccl.Cosmology(**ccl_params_within_bounds,
+                                                        transfer_function=self.ccl_defaults['transfer_function'],
+                                                        matter_power_spectrum=self.ccl_defaults['matter_pk'],
+                                                        extra_parameters=self.ccl_defaults.get('extra_parameters', {}))
                 h = ccl_cosmo['h']
                 k_ccl_here = self.lbias.emulator['nonlinear']['k'] * h
                 pk_mm = np.array([ccl.nonlin_matter_power(ccl_cosmo, k_ccl_here, a)
@@ -210,7 +227,10 @@ class heft_calculator:
                     cpar[par] += self.dx_par[par]
                     # pk_mm_p, pks_p = self._get_lbias_pks_exact(cpar)
                     ccl_cpar = self._bacco_to_ccl_params(cpar)
-                    ccl_cosmo_cpar = ccl.Cosmology(**ccl_cpar)
+                    ccl_cosmo_cpar = ccl.Cosmology(**ccl_cpar,
+                                                    transfer_function=self.ccl_defaults['transfer_function'],
+                                                    matter_power_spectrum=self.ccl_defaults['matter_pk'],
+                                                    extra_parameters=self.ccl_defaults.get('extra_parameters', {}))
                     pk_mm_p = np.array([ccl.nonlin_matter_power(ccl_cosmo_cpar, k_ccl_here, a) for a in bacco_cosmo['expfactor']])*h**3
                     pks_p = self.lbias.get_nonlinear_pnn(expfactor=bacco_cosmo['expfactor'], **cpar)[1]
                     lxp = np.log(np.fabs(pks_p)/pk_mm_p)
@@ -220,7 +240,10 @@ class heft_calculator:
                     cpar[par] -= self.dx_par[par]
                     # pk_mm_m, pks_m = self._get_lbias_pks_exact(cpar)
                     ccl_cpar = self._bacco_to_ccl_params(cpar)
-                    ccl_cosmo_cpar = ccl.Cosmology(**ccl_cpar)
+                    ccl_cosmo_cpar = ccl.Cosmology(**ccl_cpar,
+                                                    transfer_function=self.ccl_defaults['transfer_function'],
+                                                    matter_power_spectrum=self.ccl_defaults['matter_pk'],
+                                                    extra_parameters=self.ccl_defaults.get('extra_parameters', {}))
                     pk_mm_m = np.array([ccl.nonlin_matter_power(ccl_cosmo_cpar, k_ccl_here, a) for a in bacco_cosmo['expfactor']])*h**3
                     pks_m = self.lbias.get_nonlinear_pnn(expfactor=bacco_cosmo['expfactor'], **cpar)[1]
                     lxm = np.log(np.fabs(pks_m)/pk_mm_m)
