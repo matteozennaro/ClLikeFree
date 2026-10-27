@@ -37,14 +37,14 @@ class heft_calculator:
                                  False, True, False, False, True, False, True])
         self.lin_der = ~ self.log_der
 
-        self.precomputed_pnn = {}
-        self.precomputed_pmm = {}
-        self.precomputed_linear_neutrino_power = {}
+        self.precomputed_pnn = {'key': None}
+        self.precomputed_pmm = {'key': None}
+        self.precomputed_linear_neutrino_power = {'key': None}
 
     def clear_cache(self):
-        self.precomputed_pnn = {}
-        self.precomputed_pmm = {}
-        self.precomputed_linear_neutrino_power = {}
+        self.precomputed_pnn = {'key': None}
+        self.precomputed_pmm = {'key': None}
+        self.precomputed_linear_neutrino_power = {'key': None}
 
     def extract_bacco_cosmo(self, params):
         bacco_cosmo = {
@@ -188,8 +188,14 @@ class heft_calculator:
             raise RuntimeError('sigma8_cold or A_s must be specified in the cosmology parameters for conversion to CCL')
         return ccl_params
 
+    def _cosmo_key(self, bacco_cosmo):
+        return tuple(
+            (k, float(v)) for k, v in sorted(bacco_cosmo.items()) if k != 'expfactor'
+        )
+
     def get_baccoemu_pnn(self, bacco_cosmo, ccl_cosmo):
-        if self.precomputed_pnn:
+        key = self._cosmo_key(bacco_cosmo)
+        if key == self.precomputed_pnn['key']:
             return self.precomputed_pnn
         else:
             in_bounds, params_within_bounds = self._get_out_of_bounds(bacco_cosmo)
@@ -258,12 +264,13 @@ class heft_calculator:
                 pnn = pk_mm * (sign*np.exp(lx) * self.log_der[:, None, None] +
                     x * self.lin_der[:, None, None])
 
-            out = {'k': k, 'pnn': pnn}
+            out = {'key': key, 'k': k, 'pnn': pnn}
             self.precomputed_pnn = out
             return out
 
     def get_baccoemu_pk(self, bacco_cosmo, ccl_cosmo):
-        if 'pk3d' in self.precomputed_pmm:
+        key = self._cosmo_key(bacco_cosmo)
+        if key == self.precomputed_pmm['key']:
             return self.precomputed_pmm
         else:
             in_bounds = self._matter_pk_check_bounds(bacco_cosmo)
@@ -287,12 +294,13 @@ class heft_calculator:
                 k_ccl_here = k * h
                 pk3d = np.array([ccl.nonlin_matter_power(ccl_cosmo, k_ccl_here, a)
                                     for a in bacco_cosmo['expfactor']])*h**3
-            out = {'k': k, 'pk3d': pk3d}
+            out = {'key': key, 'k': k, 'pk3d': pk3d}
             self.precomputed_pmm = out
             return out
 
     def get_linear_neutrino_power(self, bacco_cosmo):
-        if 'linear_neutrino_power' in self.precomputed_linear_neutrino_power:
+        key = self._cosmo_key(bacco_cosmo)
+        if key == self.precomputed_linear_neutrino_power['key']:
             return self.precomputed_linear_neutrino_power
         else:
             k = self.lbias.emulator['nonlinear']['k']
@@ -304,6 +312,7 @@ class heft_calculator:
             else:
                 p_nunu_lin = self.mpk.get_approximate_linear_neutrino_pk(k=k, **bacco_cosmo)[1]
             out = {'fnu': fnu, 'p_nunu_lin': p_nunu_lin}
+            out['key'] = key
             self.precomputed_linear_neutrino_power = out
             return out
 
@@ -419,12 +428,12 @@ class mpk_calculator:
         if self.ccl_as is None:
             raise RuntimeError('expansion factor range must be specified')
 
-        self.precomputed_pk = {}
-        self.precomputed_Sk = {}
+        self.precomputed_pk = {'key': None}
+        self.precomputed_Sk = {'key': None}
 
     def clear_cache(self):
-        self.precomputed_pk = {}
-        self.precomputed_Sk = {}
+        self.precomputed_pk = {'key': None}
+        self.precomputed_Sk = {'key': None}
 
     def extract_bacco_cosmo(self, params):
         bacco_cosmo = {
@@ -538,8 +547,22 @@ class mpk_calculator:
             in_bounds[par] = (val >= val0) & (val <= valf)
         return in_bounds
 
+    def _cosmo_key(self, bacco_cosmo):
+        return tuple(
+            (k, float(v)) for k, v in sorted(bacco_cosmo.items()) if k != 'expfactor'
+        )
+
+    def _baryon_key(self, baccoo_cosmo, baryon_params):
+        if baryon_params is None:
+            return self._cosmo_key(baccoo_cosmo)
+        else:
+            return tuple(
+                (k, float(v)) for k, v in sorted(baryon_params.items())
+            ) + self._cosmo_key(baccoo_cosmo)
+
     def get_baccoemu_Sk(self, bacco_cosmo, baryon_params):
-        if 'Sk' in self.precomputed_Sk:
+        key = self._baryon_key(bacco_cosmo, baryon_params)
+        if key == self.precomputed_Sk['key']:
             return self.precomputed_Sk
         else:
             in_bounds_baryon = self._baryon_Sk_check_cosmo_bounds(bacco_cosmo, baryon_params)
@@ -595,7 +618,7 @@ class mpk_calculator:
             else:
                 Sk2d = ccl.Pk2D(a_arr=bacco_cosmo['expfactor'], lk_arr=np.log(ccl_ks), pk_arr=Sk_ccl, is_logp=False)
 
-            out = {'k': k, 'Sk': Sk, 'a_s': bacco_cosmo['expfactor'], 'Sk2d': Sk2d}
+            out = {'key': key, 'k': k, 'Sk': Sk, 'a_s': bacco_cosmo['expfactor'], 'Sk2d': Sk2d}
             self.precomputed_Sk = out
             return out
 
@@ -624,7 +647,8 @@ class mpk_calculator:
         return k, pk3d
 
     def compute_matter_pk(self, cosmo_params, ccl_cosmo, baryon_params):
-        if 'pk' in self.precomputed_pk:
+        key = self._baryon_key(cosmo_params, baryon_params)
+        if key == self.precomputed_pk['key']:
             return self.precomputed_pk
         else:
             bacco_cosmo = self.extract_bacco_cosmo(cosmo_params)
@@ -644,7 +668,7 @@ class mpk_calculator:
                 Sk = self.k_extrapolator_for_Sk(self.ccl_ks, baccoemu_Sk['k'] * cosmo_params['h'], baccoemu_Sk['Sk'])
                 pk3d *= Sk
 
-            out = {'k': self.ccl_ks, 'pk': pk3d, 'a_s': self.ccl_as}
+            out = {'key': key, 'k': self.ccl_ks, 'pk': pk3d, 'a_s': self.ccl_as}
             self.precomputed_pk = out
 
             return out

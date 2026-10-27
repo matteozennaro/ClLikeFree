@@ -286,6 +286,33 @@ class theory_calculator:
         A_IA = pars[pn]
         return A_IA
 
+    def extract_bacco_cosmo(self, params):
+        bacco_cosmo = {
+            'omega_cold': params['Omega_cdm'] + params['Omega_b'],
+            'omega_baryon': params['Omega_b'],
+            'hubble': params['h'],
+            'ns': params['n_s'],
+            'neutrino_mass': params['M_nu'],
+            'w0': params['w0'],
+            'wa': params['wa'],
+        }
+        if 'A_s' in params:
+            sigma8_cold = self.mpk_calculator.mpk.get_sigma8(cold=True, A_s=params['A_s'], **bacco_cosmo)
+        elif 'A_sE9' in params:
+            sigma8_cold = self.mpk_calculator.mpk.get_sigma8(cold=True, A_s=params['A_sE9'] * 1e-9, **bacco_cosmo)
+        elif 'sigma8' in params:
+            if params['M_nu'] == 0:
+                sigma8_cold = params['sigma8']
+            else:
+                A_s_fid = 2.1e-9
+                sigma8_tot_fid = self.mpk_calculator.mpk.get_sigma8(cold=False, A_s=A_s_fid, **bacco_cosmo)
+                A_s = A_s_fid * (params['sigma8'] / sigma8_tot_fid) ** 2
+                sigma8_cold = self.mpk_calculator.mpk.get_sigma8(cold=True, A_s=A_s, **bacco_cosmo)
+        else:
+            raise RuntimeError('A_s, A_sE9, or sigma8 must be specified in the cosmology parameters')
+        bacco_cosmo['sigma8_cold'] = sigma8_cold
+        return bacco_cosmo
+
     def compute_theory_vector(self, sampling_params):
         # split sampling params into cosmo and bias parameters
         cosmo_params, bias_params = self.split_params(sampling_params)
@@ -299,6 +326,16 @@ class theory_calculator:
                               **self.ccl_arguments)
         # ccl_cosmo.sigma8()
         ccl_cosmo.compute_distances()
+
+        bacco_cosmo = self.extract_bacco_cosmo(cosmo_params)
+        key = self.heft_calculator._cosmo_key(bacco_cosmo)
+        if key != self.heft_calculator.precomputed_pnn['key']:
+            self.heft_calculator.clear_cache()
+
+        baryon_params = self._get_baryon_params(bias_params)
+        key = self.mpk_calculator._baryon_key(bacco_cosmo, baryon_params)
+        if key != self.mpk_calculator.precomputed_pk['key']:
+            self.mpk_calculator.clear_cache()
 
         theory_vector = []
         for clm in self.cl_meta:
@@ -328,12 +365,6 @@ class theory_calculator:
                 theory_vector.append(cl_sl)
             else:
                 raise ValueError(f"Unknown combination of tracers: {q1}, {q2}")
-
-        if self.debug:
-            print("WARNIG: in debug mode, NOT clearing cache for heft_calculator and mpk_calculator")
-        else:
-            self.heft_calculator.clear_cache()
-            self.mpk_calculator.clear_cache()
 
         return np.concatenate(theory_vector)
 
